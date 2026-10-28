@@ -52,6 +52,22 @@ def test_an_unreachable_node_cannot_tell():
     assert all(judge(r, v)[0] is None for v in VALUES)
 
 
+def test_no_vms_means_no_pve():
+    # vms=absent (no machine exists): pve=none HOLDS, every other value does not — destroy's
+    # claim pve -> none can be confirmed (user 2026-10-28)
+    r = {"expected": ["a", "b"], "nodes": {}, "blind": "", "no_vms": True}
+    assert [v for v in VALUES if judge(r, v)[0]] == ["none"]
+    assert all(judge(r, v)[0] is False for v in VALUES if v != "none")
+
+
+def test_read_pve_with_no_vms_contacts_nothing(monkeypatch):
+    async def run(self, cmd, **kw):
+        raise AssertionError("looked at PVE although no VM exists")
+    monkeypatch.setattr(pve.Proc, "run", run)
+    r = asyncio.run(pve.read_pve(FakeRig(), ["a", "b"], False, "absent", no_vms=True))
+    assert judge(r, "none")[0] is True
+
+
 def test_blind_when_the_vms_do_not_run():
     r = reading({}, blind="n2=shutoff")
     assert all(judge(r, v)[0] is None for v in VALUES)
