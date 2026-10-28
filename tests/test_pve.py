@@ -20,11 +20,11 @@ def reading(nodes, expected=("a", "b"), founder="a", blind=""):
 CASES = [
     ("none", {"a": ("none", {}), "b": ("none", {})}, "none"),
     ("installed", {"a": ("installed", {}), "b": ("installed", {})}, "installed"),
-    ("founded", {"a": cl("a"), "b": ("installed", {})}, "founded"),
-    ("clustered", {"a": cl("ab"), "b": cl("ab")}, "clustered"),
+    ("the founder alone", {"a": cl("a"), "b": ("installed", {})}, "clustered"),
+    ("joined", {"a": cl("ab"), "b": cl("ab")}, "clustered_m"),
     ("half-installed", {"a": ("installed", {}), "b": ("half-installed", {})}, None),
     ("a stub install", {"a": ("half-installed", {}), "b": ("half-installed", {})}, None),
-    ("the wrong node founded", {"a": ("installed", {}), "b": cl("b")}, None),
+    ("the wrong node formed the cluster", {"a": ("installed", {}), "b": cl("b")}, None),
     ("founder lists b, b only installed (stale)", {"a": cl("ab"), "b": ("installed", {})}, None),
     ("a foreign cluster", {"a": cl("ab"), "b": cl("bz")}, None),
     ("a stale member list", {"a": cl("abc"), "b": cl("abc")}, None),
@@ -39,12 +39,28 @@ def test_at_most_one_value_holds(name, nodes, holds):
     assert held == ([holds] if holds else []), (name, held)
 
 
-def test_clustered_is_judged_against_the_current_expected_nodes():
+def test_clustered_m_is_judged_against_the_current_expected_nodes():
     # after rmnode a, addnode c: the cluster b, c is whole for expected [b, c] ...
     nodes = {"b": cl("bc"), "c": cl("bc")}
-    assert judge(reading(nodes, expected=["b", "c"], founder="b"), "clustered")[0]
+    assert judge(reading(nodes, expected=["b", "c"], founder="b"), "clustered_m")[0]
     # ... and not for the catalogue's fixed [a, b] (the defect D9 found)
-    assert not judge(reading({"a": ("none", {}), "b": cl("bc")}, expected=["a", "b"]), "clustered")[0]
+    assert not judge(reading({"a": ("none", {}), "b": cl("bc")}, expected=["a", "b"]), "clustered_m")[0]
+
+
+ONE_NODE = [
+    ("formed", {"a": cl("a")}, "clustered"),
+    ("installed", {"a": ("installed", {})}, "installed"),
+    ("a stale member list", {"a": cl("ab")}, None),
+    ("offline", {"a": cl("a", 0)}, None),
+]
+
+
+@pytest.mark.parametrize("name,nodes,holds", ONE_NODE, ids=[c[0] for c in ONE_NODE])
+def test_one_node_cluster_is_clustered_never_clustered_m(name, nodes, holds):
+    # a one-node cluster is as complete as any (user 2026-10-28): form makes it `clustered`, and
+    # `clustered_m` (joined nodes) can never hold with one expected node — no value is ambiguous
+    held = [v for v in VALUES if judge(reading(nodes, expected=["a"]), v)[0]]
+    assert held == ([holds] if holds else []), (name, held)
 
 
 def test_an_unreachable_node_cannot_tell():
@@ -123,7 +139,7 @@ def test_read_pve_reads_each_expected_node_once_over_ssh(monkeypatch):
     monkeypatch.setattr(pve.Proc, "run", run)
     r = asyncio.run(pve.read_pve(FakeRig(), ["a", "b"], True, ""))
     assert len(calls) == 2 and all("IdentityAgent=none" in c and "root@192.0.2." in c for c in calls)
-    assert [v for v in VALUES if judge(r, v)[0]] == ["founded"]
+    assert [v for v in VALUES if judge(r, v)[0]] == ["clustered"]
 
 
 def test_read_pve_does_not_look_when_the_vms_do_not_run(monkeypatch):

@@ -6,10 +6,11 @@ judging, shared by every value asked in that look):
 
     none       no expected node has Proxmox VE
     installed  every expected node has PVE with pve-cluster active, and none is in a cluster
-    founded    the founder is quorate in a cluster whose member list is the founder alone; every
-               other expected node is installed
-    clustered  every expected node is quorate, in ONE cluster whose member list is exactly the
-               expected nodes, all online
+    clustered    the founder is quorate in a cluster whose member list is the founder alone; every
+                 other expected node is installed. A one-node cluster is as complete as any: with
+                 one expected node this is the whole cluster (user 2026-10-28)
+    clustered_m  at least TWO expected nodes, every one quorate, in ONE cluster whose member list
+                 is exactly the expected nodes, all online: the nodes joined to the founder's
 
 "Expected" is the CURRENT set: testrunner's declared data `expected` when the runner config
 declares it (it follows addnode/rmnode), else the catalogue's cluster nodes. The founder is the
@@ -23,7 +24,9 @@ holds: no VM, no PVE — an observation, not a guess (user 2026-10-28). A node t
 is also "cannot tell".
 
 Declare `validate: {python: pve}` on a variable whose values are exactly those names, and
-`observe: {order: [clustered, founded, installed, none]}` to read it.
+`observe: {order: [clustered_m, clustered, installed, none]}` to read it. At most one value holds
+on any reading: `clustered` needs every other expected node installed (outside any cluster),
+`clustered_m` needs them all members, and needs two of them.
 """
 from __future__ import annotations
 
@@ -38,7 +41,7 @@ from testrunner.proc import Proc
 
 log = logging.getLogger(__name__)
 
-VALUES = ("none", "installed", "founded", "clustered")
+VALUES = ("none", "installed", "clustered", "clustered_m")
 
 # what a node says about itself, one key=value per line (printf, never echo)
 FACTS = r"""
@@ -122,16 +125,20 @@ def judge(reading: dict, value: str) -> tuple[bool | None, str]:
         return all(rd == "none" for rd in readings.values()), why
     if value == "installed":
         return all(rd == "installed" for rd in readings.values()), why
-    if value == "founded":
+    if value == "clustered":
         f = reading["founder"]
         if readings.get(f) != "clustered":
             return False, f"{why}; the founder {f} is not in a cluster"
         members = set(nodes[f][1].get("nodelist", {}))
         if members != {f}:
             return False, f"{why}; the founder's member list {sorted(members)} is not [{f}]"
+        if not nodes[f][1]["nodelist"][f]:
+            return False, f"{why}; the founder {f} lists itself offline"
         others = {n: rd for n, rd in readings.items() if n != f and rd != "installed"}
         return (not others), (f"{why}; not installed: {others}" if others else why)
-    if value == "clustered":
+    if value == "clustered_m":
+        if len(exp) < 2:
+            return False, f"{why}; one expected node: its cluster is `clustered`, never `clustered_m`"
         if any(rd != "clustered" for rd in readings.values()):
             return False, why
         lists = [set(nodes[n][1].get("nodelist", {})) for n in exp]
