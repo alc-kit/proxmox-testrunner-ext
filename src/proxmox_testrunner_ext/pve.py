@@ -16,8 +16,9 @@ declares it (it follows addnode/rmnode), else the catalogue's cluster nodes. The
 catalogue's `founder` role.
 
 **Cannot tell, never a guess.** PVE is observable only while the rig's VMs run: when the `vms`
-region (testrunner.ext.rig) is not `running` — a node stopped, missing, or not answering TCP/22
-— every value answers "cannot tell". A node that answers TCP/22 but refuses the harness key
+region (testrunner.ext.rig) is `halted` or `partial` — a node stopped, missing, or not answering
+TCP/22 — every value answers "cannot tell". When it is `absent` (no VM exists at all), `none`
+holds: no VM, no PVE — an observation, not a guess (user 2026-10-28). A node that answers TCP/22 but refuses the harness key
 (stopping pve-cluster removes root's authorized_keys, which live in pmxcfs: measured 2026-10-28)
 is also "cannot tell".
 
@@ -48,10 +49,6 @@ printf 'quorate=%s\n' "$(pvecm status 2>/dev/null | awk -F: '/^Quorate/{gsub(/ /
 printf 'members=%s\n' "$(tr -d '\n' < /etc/pve/.members 2>/dev/null)"
 """
 
-SSH_OPTS = ("-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o IdentitiesOnly=yes "
-            "-o AddKeysToAgent=no -o IdentityAgent=none -o ConnectTimeout=10")
-
-
 def classify(facts: dict) -> str:
     """One node's reading from its facts: none, half-installed, installed, unreadable-members,
     unquorate or clustered."""
@@ -80,7 +77,11 @@ def parse_facts(text: str) -> dict:
 
 async def read_node(rig: Any, proc: Proc, node: str) -> tuple[str, dict]:
     ip = str(rig.catalogue.machines[node]["ip"])
-    cmd = f"ssh -i {shlex.quote(str(rig.key))} {SSH_OPTS} root@{ip} {shlex.quote(FACTS)}"
+    # the agent guards literally on the ssh line (a rig's agent-guard reads the call site, and an
+    # option behind a variable cannot be checked there): never consult or write the operator's agent
+    cmd = (f"ssh -i {shlex.quote(str(rig.key))} -o IdentityAgent=none -o AddKeysToAgent=no -o IdentitiesOnly=yes "
+           f"-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ConnectTimeout=10 "
+           f"root@{ip} {shlex.quote(FACTS)}")
     r = await proc.run(cmd, echo=False, timeout=60, ask_operator=False)
     if r.returncode != 0:
         return "unreachable", {"rc": r.returncode, "out": r.text.strip()[-200:]}
@@ -88,8 +89,11 @@ async def read_node(rig: Any, proc: Proc, node: str) -> tuple[str, dict]:
     return classify(facts), facts
 
 
-async def read_pve(rig: Any, expected: list[str], can_look: bool, why_not: str) -> dict:
-    """One reading of PVE on the expected nodes — or none at all, when the VMs do not run."""
+async def read_pve(rig: Any, expected: list[str], can_look: bool, why_not: str, no_vms: bool = False) -> dict:
+    """One reading of PVE on the expected nodes — or none at all, when the VMs do not run. When no
+    VM exists at all (vms=absent), that IS the reading: no PVE exists (user 2026-10-28)."""
+    if no_vms:
+        return {"expected": expected, "nodes": {}, "blind": "", "no_vms": True}
     if not can_look:
         return {"expected": expected, "nodes": {}, "blind": why_not}
     proc = Proc(rig.root, rig.logs)
@@ -101,6 +105,9 @@ async def read_pve(rig: Any, expected: list[str], can_look: bool, why_not: str) 
 
 def judge(reading: dict, value: str) -> tuple[bool | None, str]:
     """pve=value on this reading: True, False, or None (cannot tell)."""
+    if reading.get("no_vms"):
+        # no VM exists at all: no PVE exists either — an observation (the VMs read absent), not a guess
+        return value == "none", "no VM of the rig exists, so no Proxmox VE does"
     if reading["blind"]:
         return None, f"cannot look at PVE: {reading['blind']}"
     exp = reading["expected"]
@@ -140,8 +147,10 @@ async def pve_reading(rig, machines_reading):
     """PVE on the expected nodes, read ONCE per look — only when the vms region is `running`
     (machines_reading is testrunner.ext.rig's, from the same look)."""
     from testrunner.ext.rig.regions import judge_vms
+    absent, _ = judge_vms(machines_reading, "absent")
     running, why = judge_vms(machines_reading, "running")
-    return await read_pve(rig, machines_reading["expected"], running, "" if running else f"the VMs do not all run ({why})")
+    return await read_pve(rig, machines_reading["expected"], running, "" if running else f"the VMs do not all run ({why})",
+                          no_vms=absent)
 
 
 @validator("pve")
