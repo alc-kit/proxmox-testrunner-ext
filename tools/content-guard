@@ -5,8 +5,7 @@ Refuses private IPv4 addresses and internal host names (built in), and NAMES tha
 appear here: customers, hosts, fleets. Those names are never written in this repository (that
 would publish them): they come from CONTENT_GUARD_NAMES (one per line, or comma-separated), or
 from ~/.config/content-guard/names. With --require-names the guard fails when no names were
-given — CI sets the variable from a repository secret, so a missing secret is a red run, never a
-silent "clean".
+given, so it never reports "clean" without them. It is an optional local tool: nothing runs it.
 
 Scans every tracked file (or the paths given). Exit 0 clean, 1 findings, 2 refused.
 """

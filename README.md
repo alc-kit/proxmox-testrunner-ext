@@ -56,18 +56,14 @@ TESTRUNNER_SRC=../testrunner/src python3 -m pytest -q tests
 ```
 
 testrunner is not on PyPI, so the tests import it from a checkout and refuse to run without one.
-CI tests against a **pinned testrunner commit** (`TESTRUNNER_REF` in `.github/workflows/ci.yml`),
-bumped deliberately.
+There is no CI here (user 2026-10-28): run the tests locally, against the testrunner the rigs
+vendor.
 
-## Content guard
+## Content guard (optional, local)
 
-`tools/content-guard` refuses private IPv4 addresses and internal host names, and a list of
-**names that must never appear here** (customers, hosts, fleets). That list is never written in
-this repository, since writing it would publish it. It comes from `CONTENT_GUARD_NAMES`, or from
-`~/.config/content-guard/names`, and in CI from the repository secret `CONTENT_GUARD_NAMES`.
-`--require-names` fails when no names were given, so a missing secret is a red run, never a
-silent "clean". A finding on a name is reported by its number; the line is withheld, because CI
-logs are public.
+`tools/content-guard` refuses private IPv4 addresses and internal host names. It can also
+refuse a list of names, given from outside the repository (`CONTENT_GUARD_NAMES`, or
+`~/.config/content-guard/names`). Nothing requires it: run it when you want it.
 
 ## License
 
