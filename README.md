@@ -10,7 +10,7 @@ This repository holds what testrunner needs to know about Proxmox VE, and nothin
 | the runner, the state machine, validators, observers, the `machine:` notation | [testrunner](https://github.com/alc-kit/testrunner) | generic: knows nothing about Proxmox |
 | VMs: do the rig's machines exist and run (`vms` region) | testrunner `ext.rig` | generic to any libvirt/Vagrant rig |
 | the generic part of support machines (they exist and answer) | testrunner `ext.rig` | generic |
-| **Proxmox VE: installed, founded, clustered, quorum, membership** (`pve` region) | **here** | Proxmox is the system under test, not the framework |
+| **Proxmox VE: installed, clustered, joined, quorum, membership** (`pve` region) | **here** | Proxmox is the system under test, not the framework |
 
 A rig (for example a lab or a gate) vendors this repository as a subtree next to testrunner and
 imports it as `proxmox_testrunner_ext`.
@@ -23,8 +23,14 @@ imports it as `proxmox_testrunner_ext`.
 |---|---|
 | `none` | no expected node has Proxmox VE |
 | `installed` | every expected node has PVE with pve-cluster active, and none is in a cluster |
-| `founded` | the founder is quorate in a cluster whose member list is the founder alone; every other expected node is installed |
-| `clustered` | every expected node is quorate, in **one** cluster whose member list is exactly the expected nodes, all online |
+| `clustered` | the founder is quorate and online in a cluster whose member list is the founder alone; every other expected node is installed |
+| `clustered_m` | at least **two** expected nodes, every one quorate, in **one** cluster whose member list is exactly the expected nodes, all online |
+
+- **A one-node cluster is as complete as any** (user 2026-10-28): `form` makes the cluster
+  `clustered`, whatever the node count, and `join` makes it `clustered_m` (the nodes joined to the
+  founder's). With one expected node `clustered_m` never holds, so at most one value holds on any
+  reading. A rig's machine writes `installed --> clustered : form [passed]` and
+  `clustered --> clustered_m : join [passed]`.
 
 - **Expected** is the *current* set: testrunner's declared data `expected` when the runner
   config declares it (so it follows `addnode`/`rmnode`), else the catalogue's cluster nodes. The
@@ -44,9 +50,9 @@ ext:
   rig: {...}                 # testrunner.ext.rig: the vms region this one depends on
 states:
   pve:
-    values: [none, installed, founded, clustered]
+    values: [none, installed, clustered, clustered_m]
     validate: {python: pve}
-    observe: {order: [clustered, founded, installed, none]}
+    observe: {order: [clustered_m, clustered, installed, none]}
 ```
 
 ## Tests
